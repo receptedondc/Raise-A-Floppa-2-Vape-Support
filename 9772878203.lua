@@ -1,4 +1,4 @@
---This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
+
 local loadstring = function(...)
 	local res, err = loadstring(...)
 	if err and vape then
@@ -8274,6 +8274,9 @@ run(function()
 	local collectRentEvent = events:WaitForChild("Collect Rent")
 	local raiseRentEvent = events:WaitForChild("Raise Rent")
 
+	local collectRent2Event = events:WaitForChild("Collect Rent 2")
+	local raiseRent2Event = events:WaitForChild("Raise Rent 2")
+
 	local AutoRent
 	local hasFired = false
 
@@ -8286,18 +8289,31 @@ run(function()
 		return tonumber(string.split(lighting.TimeOfDay, ":")[1])
 	end
 
+	-- 🔥 decide mode once per tick
+	local function useRent2()
+		return workspace:FindFirstChild("Unlocks")
+			and workspace.Unlocks:FindFirstChild("Rich Roommate")
+	end
+
 	-- 🔥 ALWAYS scanning rent
 	local function pullRent()
 		local root = getHRP()
-		local rentFolder = workspace
+		if not root then return end
 
-		if not root or not rentFolder then return end
-
-		for _, v in ipairs(rentFolder:GetChildren()) do
-			if v.Name == "Rent" then
-				v.CanCollide = false
-				v.Transparency = 1
-				v.CFrame = root.CFrame
+		if useRent2() then
+			local rent2 = workspace:FindFirstChild("Rent 2")
+			if rent2 and rent2:IsA("BasePart") then
+				rent2.CanCollide = false
+				rent2.Transparency = 1
+				rent2.CFrame = root.CFrame
+			end
+		else
+			for _, v in ipairs(workspace:GetChildren()) do
+				if v.Name == "Rent" and v:IsA("BasePart") then
+					v.CanCollide = false
+					v.Transparency = 1
+					v.CFrame = root.CFrame
+				end
 			end
 		end
 	end
@@ -8305,16 +8321,23 @@ run(function()
 	local function start()
 		task.spawn(function()
 			while AutoRent.Enabled do
-				-- 🔁 always pull rent every tick
 				pullRent()
 
-				-- ⏱ time-based rent
 				local hour = getHour()
+				local rent2 = useRent2()
 
 				if hour == 12 and not hasFired then
-					collectRentEvent:FireServer()
-					task.wait(0.1)
-					raiseRentEvent:FireServer()
+
+					if rent2 then
+						collectRent2Event:FireServer()
+						task.wait(0.1)
+						raiseRent2Event:FireServer()
+					else
+						collectRentEvent:FireServer()
+						task.wait(0.1)
+						raiseRentEvent:FireServer()
+					end
+
 					hasFired = true
 				end
 
@@ -8322,7 +8345,7 @@ run(function()
 					hasFired = false
 				end
 
-				task.wait(0.1) -- faster scan
+				task.wait(0.1)
 			end
 		end)
 	end
@@ -8499,3 +8522,425 @@ run(function()
 	})
 end)
 
+run(function()
+	local Players = game:GetService("Players")
+	local lp = Players.LocalPlayer
+
+	local function getHRP()
+		local char = lp.Character
+		return char and char:FindFirstChild("HumanoidRootPart")
+	end
+
+	local function findTouchPart(tool)
+		for _, descendant in ipairs(tool:GetDescendants()) do
+			if descendant:IsA("TouchTransmitter") then
+				local part = descendant.Parent
+				if part and part:IsA("BasePart") then
+					return part
+				end
+			end
+		end
+		return nil
+	end
+
+	local function pickupTool(tool)
+		local hrp = getHRP()
+		if not hrp then return end
+
+		local part = findTouchPart(tool)
+		if not part then return end
+
+		pcall(function()
+			for _, d in ipairs(tool:GetDescendants()) do
+				if d:IsA("BasePart") then
+					d.CanCollide = false
+					d.AssemblyLinearVelocity = Vector3.zero
+					d.AssemblyAngularVelocity = Vector3.zero
+				end
+			end
+
+			tool:PivotTo(CFrame.new(hrp.Position))
+		end)
+	end
+
+	local AutoPickup
+
+	AutoPickup = vape.Categories.Utility:CreateModule({
+		Name = "AutoPickup",
+
+		Function = function(callback)
+			if callback then
+				task.spawn(function()
+					while AutoPickup and AutoPickup.Enabled do
+						task.wait(0.1)
+
+						local hrp = getHRP()
+						if not hrp then continue end
+
+						for _, obj in ipairs(workspace:GetChildren()) do
+							if obj:IsA("Tool") then
+								pickupTool(obj)
+							end
+						end
+					end
+				end)
+			end
+		end
+	})
+end)
+
+run(function()
+	local Players = game:GetService("Players")
+	local lp = Players.LocalPlayer
+
+	local TARGET_GEMS = {
+		Sapphire = true,
+		Diamond = true,
+		Ruby = true,
+		Emerald = true
+	}
+
+	local function getHRP()
+		local char = lp.Character
+		return char and char:FindFirstChild("HumanoidRootPart")
+	end
+
+	local function isGem(obj)
+		return obj:IsA("MeshPart") and TARGET_GEMS[obj.Name]
+	end
+
+	local function pickup(obj)
+		local hrp = getHRP()
+		if not hrp then return end
+
+		pcall(function()
+			obj.CanCollide = false
+			obj.AssemblyLinearVelocity = Vector3.zero
+			obj.AssemblyAngularVelocity = Vector3.zero
+			obj.CFrame = CFrame.new(hrp.Position)
+		end)
+	end
+
+	local AutoGem
+
+	AutoGem = vape.Categories.Utility:CreateModule({
+		Name = "AutoGem",
+		Tooltip = "Automatically collects gems",
+
+		Function = function(callback)
+			if callback then
+				task.spawn(function()
+					while AutoGem and AutoGem.Enabled do
+						task.wait(0.1)
+
+						for _, obj in ipairs(workspace:GetChildren()) do
+							if isGem(obj) then
+								pickup(obj)
+							end
+						end
+					end
+				end)
+			end
+		end,
+
+		ExtraText = function()
+			return "Pickup"
+		end
+	})
+end)
+
+run(function()
+	local Players = game:GetService("Players")
+	local lp = Players.LocalPlayer
+
+	local water = workspace:WaitForChild("Water For Fishies")
+
+	local function getRod()
+		local char = lp.Character
+		return char and char:FindFirstChild("Fishing Rod")
+	end
+
+	local function getHook(rod)
+		return rod and rod:FindFirstChild("Hook")
+	end
+
+	local function getSparkles(hook)
+		return hook and hook:FindFirstChild("Sparkles")
+	end
+
+	local function aimingAtWater()
+		local mouse = lp:GetMouse()
+		return mouse and mouse.Target == water
+	end
+
+	local AutoFish
+
+	AutoFish = vape.Categories.Utility:CreateModule({
+		Name = "AutoFish",
+
+		Function = function(callback)
+			if not callback then return end
+
+			task.spawn(function()
+				while AutoFish and AutoFish.Enabled do
+					task.wait(0.1)
+
+					-- 🎣 must have rod to even start a cycle
+					local rod = getRod()
+					if not rod then
+						continue
+					end
+
+					local hook = getHook(rod)
+					if not hook then
+						continue
+					end
+
+					local sparkles = getSparkles(hook)
+					if not sparkles then
+						continue
+					end
+
+					-- 🎯 START CYCLE ONLY IF AIMING AT WATER
+					if not aimingAtWater() then
+						continue
+					end
+
+					-- =========================
+					-- 🎣 CAST (ONCE PER CYCLE)
+					-- =========================
+					pcall(function()
+						rod:Activate()
+					end)
+
+					-- cycle state
+					local cycleActive = true
+					local validWaterTarget = true
+
+					-- =========================
+					-- 🔁 REEL LOOP
+					-- =========================
+					while AutoFish and AutoFish.Enabled and cycleActive do
+
+						-- ❌ rod unequipped → hard stop
+						if not getRod() then
+							cycleActive = false
+							break
+						end
+
+						-- ❌ if user leaves water → finish cycle but DO NOT restart immediately
+						if not aimingAtWater() then
+							validWaterTarget = false
+							cycleActive = false
+							break
+						end
+
+						local hook2 = getHook(rod)
+						local sparkles2 = hook2 and getSparkles(hook2)
+
+						if not sparkles2 then
+							cycleActive = false
+							break
+						end
+
+						-- ✨ fish ready → reel loop
+						if sparkles2.Enabled then
+							pcall(function()
+								rod:Activate()
+								task.wait(0.1)
+								rod:Activate()
+							end)
+						else
+							task.wait(0.1)
+						end
+					end
+
+					-- =========================
+					-- 🧠 POST-CYCLE RULE
+					-- =========================
+
+					-- if cycle ended due to NOT aiming at water → wait until fully reset
+					if not validWaterTarget then
+						while AutoFish and AutoFish.Enabled do
+							task.wait(0.2)
+
+							-- only restart when rod exists AND player is aiming again
+							if getRod() and aimingAtWater() then
+								break
+							end
+						end
+					end
+				end
+			end)
+		end
+	})
+end)
+
+run(function()
+	local lp = game:GetService("Players").LocalPlayer
+
+	local floppa = workspace:WaitForChild("Floppa")
+	local wormholeMachine = workspace.Unlocks:WaitForChild("Wormhole Machine")
+
+	local mode = "Pet"
+
+	local canRun = true
+	local triggered = false
+
+	local function getHRP()
+		local char = lp.Character
+		return char and char:FindFirstChild("HumanoidRootPart")
+	end
+
+	local function getPart(obj)
+		if obj:IsA("Model") then
+			return obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+		elseif obj:IsA("BasePart") then
+			return obj
+		end
+	end
+
+	local function tpTo(obj)
+		local hrp = getHRP()
+		local part = getPart(obj)
+		if hrp and part then
+			hrp.CFrame = part.CFrame + Vector3.new(0, 3, 0)
+		end
+	end
+
+	local function firePrompts(obj)
+		for _, d in ipairs(obj:GetDescendants()) do
+			if d:IsA("ProximityPrompt") then
+				pcall(function()
+					fireproximityprompt(d)
+				end)
+			end
+		end
+	end
+
+	local function getHappiness()
+		local config = floppa:FindFirstChild("Toggles")
+			and floppa.Toggles:FindFirstChild("Configuration")
+
+		if not config then return 100 end
+
+		local val = config:FindFirstChild("Happiness")
+		if val and val:IsA("NumberValue") then
+			return val.Value
+		end
+
+		return 100
+	end
+
+	local function doPet()
+		tpTo(floppa)
+		task.wait(0.2)
+		firePrompts(floppa)
+	end
+
+	local function getCrystal()
+		local c = wormholeMachine:FindFirstChild("Crystal")
+		return c and c:FindFirstChild("Crystal")
+	end
+
+	local function getConverter()
+		local u = workspace:FindFirstChild("Unlocks")
+		return u and u:FindFirstChild("Crystal Converter")
+	end
+
+	local function doCrystal()
+		local hrp = getHRP()
+		if not hrp then return end
+
+		local original = hrp.CFrame
+
+		local crystal = getCrystal()
+		if crystal then
+			tpTo(crystal)
+			task.wait(0.2)
+			firePrompts(crystal)
+		end
+
+		local converter = getConverter()
+		if converter then
+			tpTo(converter)
+			task.wait(0.2)
+			firePrompts(converter)
+		end
+
+		task.wait(0.2)
+		hrp.CFrame = original
+	end
+
+	local KeepHappy
+
+	KeepHappy = vape.Categories.World:CreateModule({
+		Name = "KeepHappy",
+
+		Function = function(callback)
+			if callback then
+				task.spawn(function()
+
+					while KeepHappy and KeepHappy.Enabled do
+						task.wait(0.3)
+
+						local threshold = ThresholdSlider and ThresholdSlider.Value or 100
+						local happiness = getHappiness()
+
+						-- 🔁 reset cycle ONLY when we leave low state
+						if happiness > threshold then
+							triggered = false
+						end
+
+						-- 🚫 already fired for this low cycle
+						if triggered then
+							continue
+						end
+
+						-- ❌ must be low AND allowed
+						if happiness <= threshold and canRun then
+							triggered = true
+
+							if mode == "Pet" then
+								doPet()
+
+							elseif mode == "Space Crystal" then
+								doCrystal()
+
+							elseif mode == "Space Crystal + Pet" then
+								doPet()
+								task.wait(0.3)
+								doCrystal()
+							end
+
+							-- 🔁 POST ACTION RULE (your 75 system)
+							canRun = (getHappiness() >= 75)
+						end
+					end
+				end)
+			else
+				triggered = false
+				canRun = true
+			end
+		end,
+
+		ExtraText = function()
+			return mode
+		end
+	})
+
+	local ModeDropdown = KeepHappy:CreateDropdown({
+		Name = "Mode",
+		List = {"Pet", "Space Crystal", "Space Crystal + Pet"},
+		Function = function(v)
+			mode = v
+		end
+	})
+
+	local ThresholdSlider = KeepHappy:CreateSlider({
+		Name = "Happiness Threshold",
+		Min = 1,
+		Max = 150,
+		Default = 100
+	})
+end)
