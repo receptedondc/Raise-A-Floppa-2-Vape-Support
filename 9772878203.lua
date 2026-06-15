@@ -8585,6 +8585,10 @@ run(function()
 					end
 				end)
 			end
+		end, -- 🔥 THIS COMMA WAS MISSING
+
+		ExtraText = function()
+			return "Tools"
 		end
 	})
 end)
@@ -8942,5 +8946,247 @@ run(function()
 		Min = 1,
 		Max = 150,
 		Default = 100
+	})
+end)
+
+run(function()
+	local lp = game:GetService("Players").LocalPlayer
+
+	local EggAura
+	local range = 5
+
+	local function getHRP()
+		local char = lp.Character
+		return char and char:FindFirstChild("HumanoidRootPart")
+	end
+
+	local function getEgg()
+		local au2 = workspace:FindFirstChild("AU2")
+		if not au2 then return end
+
+		local nest = au2:FindFirstChild("Dragon Nest")
+		if not nest then return end
+
+		return nest:FindFirstChild("Lava Egg")
+	end
+
+	local function firePrompt(obj)
+		for _, d in ipairs(obj:GetDescendants()) do
+			if d:IsA("ProximityPrompt") then
+				fireproximityprompt(d)
+			end
+		end
+	end
+
+	EggAura = vape.Categories.World:CreateModule({
+		Name = "EggAura",
+		Tooltip = "Dragon",
+
+		Function = function(callback)
+			if callback then
+				task.spawn(function()
+					while EggAura and EggAura.Enabled do
+						task.wait(0.15)
+
+						local hrp = getHRP()
+						local egg = getEgg()
+
+						if hrp and egg and egg:IsA("BasePart") then
+							local dist = (hrp.Position - egg.Position).Magnitude
+
+							if dist <= range then
+								firePrompt(egg)
+							end
+						end
+					end
+				end)
+			end
+		end,
+
+		ExtraText = function()
+			return "Dragon"
+		end
+	})
+
+	EggAura:CreateSlider({
+		Name = "Range",
+		Min = 1,
+		Max = 10,
+		Default = 5,
+		Function = function(v)
+			range = v
+		end
+	})
+end)
+
+run(function()
+	local rs = game:GetService("ReplicatedStorage")
+	local events = rs:WaitForChild("Events")
+	local spinEvent = events:WaitForChild("Slots Spin")
+
+	local AutoGamble
+	local NotifyBroken
+	local NotifyFixed
+
+	local selectedIndex = 1
+	local delayTime = 10
+
+	local lastState = nil -- nil = unknown, true = broken, false = working
+
+	local options = {
+		{Value = 500000000000000, Text = "$5Q", Pos = 1},
+		{Value = 2500000000000000, Text = "$25Q", Pos = 2},
+		{Value = 5000000000000000, Text = "$50Q", Pos = 3},
+		{Value = 10000000000000000, Text = "$100Q", Pos = 4},
+		{Value = 25000000000000000, Text = "$250Q", Pos = 5},
+		{Value = 50000000000000000, Text = "$500Q", Pos = 6},
+	}
+
+	-- 🔍 Machine state checker
+	local function checkMachine()
+		local unlocks = workspace:FindFirstChild("Unlocks")
+		if not unlocks then return end
+
+		local slots = unlocks:FindFirstChild("Floppa Slots")
+		if not slots then return end
+
+		local machine = slots:FindFirstChild("Machine")
+		if not machine then return end
+
+		local isBroken = machine:FindFirstChild("Sparks") ~= nil
+
+		if lastState == nil then
+			lastState = isBroken
+			return
+		end
+
+		if isBroken ~= lastState then
+			lastState = isBroken
+
+			if isBroken then
+				if NotifyBroken and NotifyBroken.Enabled then
+					vape:CreateNotification("Broken", "Floppa Slots are now Down.", 30, "alert")
+				end
+			else
+				if NotifyFixed and NotifyFixed.Enabled then
+					vape:CreateNotification("Fixed", "Floppa Slots are now Working.", 30)
+				end
+			end
+		end
+	end
+
+	AutoGamble = vape.Categories.World:CreateModule({
+		Name = "AutoGamble",
+		Tooltip = "Automatically gambles your chosen value.",
+
+		Function = function(callback)
+			if callback then
+				task.spawn(function()
+					while AutoGamble and AutoGamble.Enabled do
+						task.wait(delayTime)
+
+						checkMachine()
+
+						local data = options[selectedIndex]
+
+						pcall(function()
+							spinEvent:FireServer(data)
+						end)
+					end
+				end)
+			end
+		end,
+
+		ExtraText = function()
+			return options[selectedIndex].Text
+		end
+	})
+
+	-- 🎯 Dropdown
+	AutoGamble:CreateDropdown({
+		Name = "Amount",
+		List = {"5Q", "25Q", "50Q", "100Q", "250Q", "500Q"},
+		Function = function(val)
+			for i, v in ipairs(options) do
+				if v.Text:find(val) then
+					selectedIndex = i
+					break
+				end
+			end
+		end
+	})
+
+	-- ⏱ Slider
+	AutoGamble:CreateSlider({
+		Name = "Delay (Seconds)",
+		Min = 1,
+		Max = 120,
+		Default = 10,
+		Function = function(val)
+			delayTime = val
+		end
+	})
+
+	-- 🔔 Notify toggles
+	NotifyBroken = AutoGamble:CreateToggle({
+		Name = "Notify when Broken",
+		Function = function() end
+	})
+
+	NotifyFixed = AutoGamble:CreateToggle({
+		Name = "Notify when Fixed",
+		Function = function() end
+	})
+end)
+
+run(function()
+	local Players = game:GetService("Players")
+	local lp = Players.LocalPlayer
+
+	local function getHRP()
+		local char = lp.Character
+		return char and char:FindFirstChild("HumanoidRootPart")
+	end
+
+	local function pickupGold(part)
+		local hrp = getHRP()
+		if not hrp then return end
+
+		pcall(function()
+			part.Transparency = 1
+			part.CanCollide = false
+			part.AssemblyLinearVelocity = Vector3.zero
+			part.AssemblyAngularVelocity = Vector3.zero
+			part.CFrame = hrp.CFrame
+		end)
+	end
+
+	local AutoGold
+
+	AutoGold = vape.Categories.Utility:CreateModule({
+		Name = "AutoGold",
+
+		Function = function(callback)
+			if callback then
+				task.spawn(function()
+					while AutoGold and AutoGold.Enabled do
+						task.wait(0.1)
+
+						local hrp = getHRP()
+						if not hrp then continue end
+
+						for _, obj in ipairs(workspace:GetDescendants()) do
+							if obj:IsA("MeshPart") and obj.Name == "Gold" then
+								pickupGold(obj)
+							end
+						end
+					end
+				end)
+			end
+		end,
+
+		ExtraText = function()
+			return "Pickup"
+		end
 	})
 end)
